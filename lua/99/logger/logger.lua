@@ -1,6 +1,10 @@
 local levels = require("99.logger.level")
-local MAX_REQUEST_DEFAULT = 5
 local time = require("99.time")
+local MAX_REQUEST_DEFAULT = 5
+
+--- @type table<number, _99.Logger.RequestLogs>
+local logger_cache = {}
+local max_requests_in_logger_cache = MAX_REQUEST_DEFAULT
 
 --- @class _99.Logger.Options
 --- @field level number?
@@ -98,8 +102,6 @@ end
 --- @field level number
 --- @field sink LoggerSink
 --- @field print_on_error boolean
---- @field log_cache _99.Logger.RequestLogs[]
---- @field max_requests_cached number
 --- @field extra_params table<string, any>
 local Logger = {}
 Logger.__index = Logger
@@ -113,8 +115,6 @@ function Logger:new(level)
         level = level,
         print_on_error = false,
         extra_params = {},
-        log_cache = {},
-        max_logs_cached = MAX_REQUEST_DEFAULT,
     }, self)
 end
 
@@ -129,8 +129,6 @@ function Logger:clone()
         level = self.level,
         print_on_error = self.print_on_error,
         extra_params = params,
-        log_cache = {},
-        max_requests_cached = self.max_requests_cached,
     }, Logger)
 end
 
@@ -204,7 +202,7 @@ function Logger:configure(opts)
         self:on_error_print_message()
     end
 
-    self.max_requests_cached = opts.max_requests_cached or MAX_REQUEST_DEFAULT
+    max_requests_in_logger_cache = opts.max_requests_cached or MAX_REQUEST_DEFAULT
 end
 
 --- @param line string
@@ -214,14 +212,14 @@ function Logger:_cache_log(line)
         return
     end
 
-    local cache = self.log_cache[id]
+    local cache = logger_cache[id]
     local new_cache = false
     if not cache then
         cache = {
             last_access = time.now(),
             logs = {},
         }
-        self.log_cache[id] = cache
+        logger_cache[id] = cache
         new_cache = true
     end
     cache.last_access = time.now()
@@ -231,21 +229,19 @@ function Logger:_cache_log(line)
         return
     end
 
-    local count = 0
-    local oldest = nil
-    local oldest_key = nil
-    for k, log in pairs(self.log_cache) do
-        if oldest == nil or log.last_access < oldest.last_access then
-            oldest = log
-            oldest_key = k
-        end
-        count = count + 1
-    end
+    Logger._trim_cache()
+end
 
-    if count > self.max_requests_cached then
-        assert(oldest_key, "oldest key must exist")
-        self.log_cache[oldest_key] = nil
-    end
+--- This is a _TEST ONLY_ function.  you should not call this function outside
+--- of unit tests
+function Logger.reset()
+    logger_cache = {}
+    max_requests_in_logger_cache = MAX_REQUEST_DEFAULT
+end
+
+--- @return table<number, _99.Logger.RequestLogs>
+function Logger.logs()
+    return logger_cache
 end
 
 function Logger:_log(level, msg, ...)
@@ -253,6 +249,7 @@ function Logger:_log(level, msg, ...)
         return
     end
 
+    assert(self.extra_params["id"], "every log must have an id associated with it")
     local log_statement = {
         level = levels.levelToString(level),
         msg = msg,
@@ -307,6 +304,29 @@ function Logger:assert(test, msg, ...)
     if not test then
         self:fatal(msg, ...)
     end
+end
+
+function Logger._trim_cache()
+    local count = 0
+    local oldest = nil
+    local oldest_key = nil
+    for k, log in pairs(logger_cache) do
+        if oldest == nil or log.last_access < oldest.last_access then
+            oldest = log
+            oldest_key = k
+        end
+        count = count + 1
+    end
+
+    if count > max_requests_in_logger_cache then
+        assert(oldest_key, "oldest key must exist")
+        logger_cache[oldest_key] = nil
+    end
+end
+
+function Logger.set_max_cached_requests(count)
+    max_requests_in_logger_cache = count
+    Logger._trim_cache()
 end
 
 local module_logger = Logger:new(levels.DEBUG)

@@ -5,8 +5,6 @@ local Point = geo.Point
 local Range = geo.Range
 local test_utils = require("99.test.test_utils")
 local eq = assert.are.same
-local is_not_nil = assert.is_not_nil
-local is_true = assert.is_true
 
 describe("Mark", function()
     local buffer
