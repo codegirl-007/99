@@ -9,6 +9,7 @@ local Range = require("99.geo").Range
 local Extensions = require("99.extensions")
 local Agents = require("99.extensions.agents")
 local Providers = require("99.providers")
+local Observers = require("99.observers")
 
 ---@param path_or_rule string | _99.Agents.Rule
 ---@return _99.Agents.Rule | string
@@ -41,6 +42,7 @@ end
 --- @field ai_stdout_rows number
 --- @field languages string[]
 --- @field display_errors boolean
+--- @field add_to_quickfix boolean
 --- @field provider_override _99.Provider?
 --- @field __active_requests _99.Cleanup[]
 --- @field __view_log_idx number
@@ -54,6 +56,7 @@ local function create_99_state()
     ai_stdout_rows = 3,
     languages = { "lua", "go", "java", "elixir", "cpp", "ruby" },
     display_errors = false,
+    add_to_quickfix = false,
     __active_requests = {},
     __view_log_idx = 1,
   }
@@ -71,6 +74,7 @@ end
 --- @field provider _99.Provider?
 --- @field debug_log_prefix string?
 --- @field display_errors? boolean
+--- @field add_to_quickfix? boolean
 --- @field completion _99.Completion?
 
 --- unanswered question -- will i need to queue messages one at a time or
@@ -83,6 +87,7 @@ end
 --- @field ai_stdout_rows number
 --- @field languages string[]
 --- @field display_errors boolean
+--- @field add_to_quickfix boolean
 --- @field provider_override _99.Provider?
 --- @field rules _99.Agents.Rules
 --- @field __active_requests _99.Cleanup[]
@@ -354,6 +359,14 @@ function _99.setup(opts)
   end
 
   _99_state.display_errors = opts.display_errors or false
+  _99_state.add_to_quickfix = opts.add_to_quickfix or false
+
+  Observers.clear()
+
+  if _99_state.add_to_quickfix then
+    Observers.register_on_change(Observers.add_to_quickfix)
+  end
+
   _99_state:refresh_rules()
   Languages.initialize(_99_state)
   Extensions.init(_99_state)
@@ -364,6 +377,30 @@ end
 function _99.add_md_file(md)
   table.insert(_99_state.md_files, md)
   return _99
+end
+
+--- @param opts? _99.ops.Opts
+function _99.refactor(opts)
+  opts = process_opts(opts)
+  ops.refactor(get_context("refactor"), opts)
+end
+
+--- @param opts? _99.ops.Opts
+function _99.refactor_prompt(opts)
+  opts = process_opts(opts)
+  local context = get_context("refactor")
+
+  Window.capture_input({
+    cb = function(success, response)
+      if success then
+        opts.additional_prompt = response
+        ops.refactor(context, opts)
+      end
+    end,
+    on_load = function()
+      Extensions.setup_buffer(_99_state)
+    end,
+  })
 end
 
 --- @param md string
