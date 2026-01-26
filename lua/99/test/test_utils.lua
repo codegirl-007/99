@@ -16,7 +16,7 @@ M.created_files = {}
 --- @class _99.test.ProviderRequest
 --- @field query string
 --- @field request _99.Request
---- @field observer _99.ProviderObserver?
+--- @field observer _99.Providers.Observer?
 --- @field logger _99.Logger
 
 --- @class _99.test.Provider : _99.Provider
@@ -30,7 +30,7 @@ end
 
 --- @param query string
 ---@param request _99.Request
----@param observer _99.ProviderObserver?
+---@param observer _99.Providers.Observer?
 function TestProvider:make_request(query, request, observer)
   local logger = request.context.logger:set_area("TestProvider")
   logger:debug("make_request", "tmp_file", request.context.tmp_file)

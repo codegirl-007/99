@@ -1,3 +1,9 @@
+--- @class _99.Providers.Observer
+--- @field on_stdout fun(line: string): nil
+--- @field on_stderr fun(line: string): nil
+--- @field on_complete fun(status: _99.Request.ResponseState, res: string): nil
+
+--- @type _99.Providers.Observer
 local DevNullObserver = {
   name = "DevNullObserver",
   on_stdout = function() end,
@@ -50,7 +56,7 @@ end
 
 --- @param query string
 --- @param request _99.Request
---- @param observer _99.ProviderObserver?
+--- @param observer _99.Providers.Observer?
 function BaseProvider:make_request(query, request, observer)
   local logger = request.logger:set_area(self:_get_provider_name())
   logger:debug("make_request", "tmp_file", request.context.tmp_file)

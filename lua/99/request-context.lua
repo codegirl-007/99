@@ -14,6 +14,7 @@ local random_file = utils.random_file
 --- @field logger _99.Logger
 --- @field xid number
 --- @field range _99.Range?
+--- @field operation string?
 --- @field _99 _99.State
 local RequestContext = {}
 RequestContext.__index = RequestContext

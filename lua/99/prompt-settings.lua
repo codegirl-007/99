@@ -18,6 +18,34 @@ You have been given a function change.
 Create the contents of the function.
 If the function already contains contents, use those as context
 Check the contents of the file you are in for any helper functions or context
+Your response should be the complete function, including signature
+
+<Example>
+<Input>
+export function fizz_buzz(count: number): void {
+}
+</Input>
+<Output>
+function fizz_buzz(count: number): void {
+  for (let i = 1; i <= count; i++) {
+    if (i % 15 === 0) {
+      console.log("FizzBuzz");
+    } else if (i % 3 === 0) {
+      console.log("Fizz");
+    } else if (i % 5 === 0) {
+      console.log("Buzz");
+    } else {
+      console.log(i);
+    }
+  }
+}
+</Output>
+<Notes>
+* notice that the output did not include the export statement
+* only return the function
+</Notes>
+</Example>
+
 
 if there are DIRECTIONS, follow those when changing this function.  Do not deviate
 ]]

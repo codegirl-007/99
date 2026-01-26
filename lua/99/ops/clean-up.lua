@@ -13,7 +13,7 @@ return function(context, clean_up_fn)
     clean_up_fn()
     context._99:remove_active_request(request_id)
   end
-  request_id = context._99:add_active_request(clean_up)
+  request_id = context._99:add_active_request(clean_up, context.xid)
 
   return clean_up
 end

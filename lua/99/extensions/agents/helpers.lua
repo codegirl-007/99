@@ -6,9 +6,39 @@ local function normalize_path(path)
   if path:sub(1, 1) == "/" then
     return path
   end
+  if path:sub(1, 1) == "~" then
+    return vim.fn.expand(path)
+  end
   local cwd = vim.fs.joinpath(vim.uv.cwd(), path)
   return cwd
 end
+
+--- The skills for most people look like the following
+--- /path/to/dir/<name>/SKILL.md
+---
+--- this will parse those out and return the Agents.Rule for each
+--- The name of the agent rule will be the matching folder
+--- @param dir string
+--- @return _99.Agents.Rule[]
+function M.ls_skill_pattern(dir)
+  local current_dir = normalize_path(dir)
+  local glob = vim.fs.joinpath(current_dir, "/*/SKILL.md")
+  local files = vim.fn.glob(glob, false, true)
+  local rules = {}
+
+  print("Globbing", vim.inspect(glob))
+  for _, file in ipairs(files) do
+    local folder_name = vim.fn.fnamemodify(file, ":h:t")
+    table.insert(rules, {
+      name = folder_name,
+      path = file,
+    })
+  end
+
+  return rules
+end
+
+print(vim.inspect(M.ls_skill_pattern("~/personal/skills/skills")))
 
 --- @param dir string
 --- @return _99.Agents.Rule[]
