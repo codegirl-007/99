@@ -233,10 +233,15 @@ function ACPSession:handle_update(update)
       "toolCallId",
       update.toolCallId,
       "status",
-      update.status
+      update.status,
+      "title",
+      update.title,
+      "kind",
+      update.kind
     )
 
     if update.status == "in_progress" or update.status == "completed" then
+      -- Check rawInput for write tool content (filePath + content)
       local raw_input = update.rawInput
       if raw_input then
         local target_path = raw_input.filePath or raw_input.path
@@ -255,10 +260,56 @@ function ACPSession:handle_update(update)
         if content then
           self.last_tool_write_content = content
           self.logger:debug(
-            "Captured tool write content",
+            "Captured tool write content from rawInput",
             "content_length",
             #content
           )
+        end
+      end
+
+      -- Check rawOutput for tool output (OpenCode sends this on completion)
+      local raw_output = update.rawOutput
+      if raw_output and raw_output.output then
+        self.logger:debug(
+          "Tool output received",
+          "output_length",
+          #raw_output.output
+        )
+      end
+
+      -- Check content array for tool results (includes text and diffs)
+      if update.content then
+        for _, content_item in ipairs(update.content) do
+          if content_item.type == "content" and content_item.content then
+            local inner = content_item.content
+            if inner.type == "text" and inner.text then
+              self.logger:debug(
+                "Tool content text",
+                "text_length",
+                #inner.text
+              )
+            end
+          elseif content_item.type == "diff" then
+            self.logger:debug(
+              "Tool diff",
+              "path",
+              content_item.path,
+              "has_newText",
+              content_item.newText ~= nil
+            )
+            -- If the diff is for our tmp_file, capture the newText
+            if
+              content_item.path == self.request.context.tmp_file
+              and content_item.newText
+            then
+              self.last_tool_write_content = content_item.newText
+              self.logger:debug(
+                "Captured tool write content from diff",
+                "content_length",
+                #content_item.newText
+              )
+            end
+          end
         end
       end
     end

@@ -10,7 +10,22 @@ local Lsp = require("99.editor.lsp").Lsp
 local utils = require("99.utils")
 local Agents = require("99.extensions.agents")
 
---- Reset context for a new request
+--- Create a shallow copy of context with fresh ai_context and tmp_file
+--- Used for parallel processing where each request needs isolated state
+--- @param context _99.RequestContext
+--- @return _99.RequestContext
+local function copy_context(context)
+  local copy = setmetatable({}, getmetatable(context))
+  for k, v in pairs(context) do
+    copy[k] = v
+  end
+  copy.ai_context = {}
+  copy.tmp_file = utils.random_file()
+  return copy
+end
+
+--- Reset context for a new request (mutates in place)
+--- Used for sequential processing where we reuse the same context
 --- @param context _99.RequestContext
 local function reset_context(context)
   context.ai_context = {}
@@ -87,12 +102,12 @@ local function save_changed_buffers(changed_buffers, logger)
   end
 end
 
---- Build a configured request for a single location
+--- Build a configured request for sequential processing (mutates context)
 --- @param loc {buffer: number, path: string, range: _99.Range}
 --- @param context _99.RequestContext
 --- @param opts _99.ops.Opts
 --- @return _99.Request
-local function build_request(loc, context, opts)
+local function build_request_sequential(loc, context, opts)
   reset_context(context)
   local request = Request.new(context)
 
@@ -116,8 +131,36 @@ local function build_request(loc, context, opts)
   return request
 end
 
+--- Build a configured request for parallel processing (creates context copy)
+--- @param loc {buffer: number, path: string, range: _99.Range}
+--- @param context _99.RequestContext
+--- @param opts _99.ops.Opts
+--- @return _99.Request
+local function build_request_parallel(loc, context, opts)
+  local ctx = copy_context(context)
+  local request = Request.new(ctx)
+
+  local prompt = ctx._99.prompts.prompts.refactor(
+    loc.path,
+    loc.range.start.row,
+    loc.range:to_text(),
+    opts.additional_prompt or ""
+  )
+
+  if opts.additional_prompt then
+    local rules = Agents.find_rules(ctx._99.rules, opts.additional_prompt)
+    ctx:add_agent_rules(rules)
+  end
+
+  if opts.additional_rules then
+    ctx:add_agent_rules(opts.additional_rules)
+  end
+
+  request:add_prompt_content(prompt)
+  return request
+end
+
 --- Convert LSP references to ranges we can work with
---- Expands each reference to include the full line for better context
 --- @param refs {uri: string, range: LspRange}[]
 --- @return {buffer: number, path: string, range: _99.Range}[]
 local function refs_to_ranges(refs)
@@ -148,6 +191,162 @@ local function refs_to_ranges(refs)
   return ranges
 end
 
+--- Check if the provider supports parallel requests
+--- @param context _99.RequestContext
+--- @return boolean
+local function supports_parallel(context)
+  local provider = context._99.provider_override
+  if not provider then
+    return false
+  end
+  local name = provider._get_provider_name and provider._get_provider_name()
+  return name == "ACPProvider"
+end
+
+--- Process locations sequentially (for CLI providers)
+--- @param locations {buffer: number, path: string, range: _99.Range}[]
+--- @param context _99.RequestContext
+--- @param opts _99.ops.Opts
+--- @param logger _99.Logger
+--- @param request_status any
+--- @param clean_up function
+local function process_sequential(
+  locations,
+  context,
+  opts,
+  logger,
+  request_status,
+  clean_up
+)
+  local total = #locations
+  local results = {}
+
+  local function process_next(index)
+    if index < 1 then
+      local changed_buffers =
+        apply_changes(locations, results, context, opts, logger)
+      save_changed_buffers(changed_buffers, logger)
+      vim.schedule(clean_up)
+      logger:debug("refactor complete", "total", total)
+      return
+    end
+
+    local loc = locations[index]
+    local request = build_request_sequential(loc, context, opts)
+
+    request:start({
+      on_stdout = function(line)
+        request_status:push(line)
+      end,
+      on_stderr = function(line)
+        logger:debug("refactor#on_stderr", "line", line)
+      end,
+      on_complete = function(status, response)
+        request_status:push(
+          string.format("Done %d/%d", total - index + 1, total)
+        )
+
+        if status == "success" then
+          results[index] = response
+          logger:debug("got response for location", "index", index)
+        elseif status == "cancelled" then
+          logger:debug("refactor was cancelled", "index", index)
+          return
+        else
+          logger:warn(
+            "failed to process location",
+            "index",
+            index,
+            "status",
+            status
+          )
+        end
+
+        process_next(index - 1)
+      end,
+    })
+  end
+
+  process_next(#locations)
+end
+
+--- Process locations in parallel (for ACP provider)
+--- @param locations {buffer: number, path: string, range: _99.Range}[]
+--- @param context _99.RequestContext
+--- @param opts _99.ops.Opts
+--- @param logger _99.Logger
+--- @param request_status any
+--- @param clean_up function
+local function process_parallel(
+  locations,
+  context,
+  opts,
+  logger,
+  request_status,
+  clean_up
+)
+  local completed = 0
+  local total = #locations
+  local results = {}
+  local active_requests = {}
+
+  local original_clean_up = clean_up
+  clean_up = function()
+    for _, req in pairs(active_requests) do
+      req:cancel()
+    end
+    original_clean_up()
+  end
+
+  local function on_all_complete()
+    local changed_buffers =
+      apply_changes(locations, results, context, opts, logger)
+    save_changed_buffers(changed_buffers, logger)
+    vim.schedule(clean_up)
+    logger:debug("refactor complete", "total", total)
+  end
+
+  for index, loc in ipairs(locations) do
+    local request = build_request_parallel(loc, context, opts)
+    active_requests[index] = request
+
+    request:start({
+      on_stdout = function(line)
+        request_status:push(line)
+      end,
+      on_stderr = function(line)
+        logger:debug("refactor#on_stderr", "index", index, "line", line)
+      end,
+      on_complete = function(status, response)
+        completed = completed + 1
+        active_requests[index] = nil
+        request_status:push(string.format("Done %d/%d", completed, total))
+
+        if status == "success" then
+          results[index] = response
+          logger:debug("got response for location", "index", index)
+        elseif status == "cancelled" then
+          logger:debug("refactor was cancelled", "index", index)
+        else
+          logger:warn(
+            "failed to process location",
+            "index",
+            index,
+            "status",
+            status
+          )
+        end
+
+        if completed >= total then
+          on_all_complete()
+        end
+      end,
+    })
+  end
+
+  logger:debug("launched parallel requests", "count", total)
+end
+
 --- @param context _99.RequestContext
 --- @param opts _99.ops.Opts
 local function refactor(context, opts)
@@ -173,72 +372,32 @@ local function refactor(context, opts)
     )
     request_status:start()
 
-    local completed = 0
-    local total = #locations
-    local results = {} -- Store results indexed by location
-    local active_requests = {} -- Track active requests for cancellation
-
     local clean_up = make_clean_up(context, function()
-      -- Cancel all active requests
-      for _, req in pairs(active_requests) do
-        req:cancel()
-      end
       request_status:stop()
       status_mark:delete()
     end)
 
-    -- Called when all requests complete
-    local function on_all_complete()
-      -- Apply changes in reverse order to prevent line number shifts
-      local changed_buffers =
-        apply_changes(locations, results, context, opts, logger)
-      save_changed_buffers(changed_buffers, logger)
-      vim.schedule(clean_up)
-      logger:debug("refactor complete", "total", total)
+    if supports_parallel(context) then
+      logger:debug("using parallel processing (ACP)")
+      process_parallel(
+        locations,
+        context,
+        opts,
+        logger,
+        request_status,
+        clean_up
+      )
+    else
+      logger:debug("using sequential processing (CLI)")
+      process_sequential(
+        locations,
+        context,
+        opts,
+        logger,
+        request_status,
+        clean_up
+      )
     end
-
-    -- Launch all requests in parallel
-    for index, loc in ipairs(locations) do
-      -- Each request needs its own context copy for tmp_file
-      local request = build_request(loc, context, opts)
-      active_requests[index] = request
-
-      request:start({
-        on_stdout = function(line)
-          request_status:push(line)
-        end,
-        on_stderr = function(line)
-          logger:debug("refactor#on_stderr", "index", index, "line", line)
-        end,
-        on_complete = function(status, response)
-          completed = completed + 1
-          active_requests[index] = nil
-          request_status:push(string.format("Done %d/%d", completed, total))
-
-          if status == "success" then
-            results[index] = response
-            logger:debug("got response for location", "index", index)
-          elseif status == "cancelled" then
-            logger:debug("refactor was cancelled", "index", index)
-          else
-            logger:warn(
-              "failed to process location",
-              "index",
-              index,
-              "status",
-              status
-            )
-          end
-
-          -- Check if all requests are done
-          if completed >= total then
-            on_all_complete()
-          end
-        end,
-      })
-    end
-
-    logger:debug("launched parallel requests", "count", total)
   end)
 end
 

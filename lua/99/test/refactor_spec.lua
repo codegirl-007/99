@@ -531,4 +531,242 @@ describe("refactor", function()
       cleanup()
     end)
   end)
+
+  describe("parallel processing (ACP)", function()
+    local function setup_acp_multi_file(contents, refs, cursor_pos)
+      local p = test_utils.ACPTestProvider.new()
+      _99.setup({
+        provider = p,
+        logger = {
+          error_cache_level = Levels.ERROR,
+          type = "print",
+        },
+      })
+
+      local buffers = {}
+      local paths = {}
+      for i, file_contents in ipairs(contents) do
+        local path = create_temp_file(file_contents)
+        table.insert(paths, path)
+
+        local bufnr = vim.fn.bufadd(path)
+        vim.fn.bufload(bufnr)
+        vim.bo[bufnr].ft = "lua"
+        table.insert(test_utils.created_files, bufnr)
+        buffers[i] = bufnr
+      end
+
+      vim.api.nvim_set_current_buf(buffers[cursor_pos.buffer])
+      vim.api.nvim_win_set_cursor(0, { cursor_pos.row, cursor_pos.col })
+
+      local restore_lsp = mock_lsp_references(refs, buffers)
+
+      local function cleanup()
+        restore_lsp()
+        for _, path in ipairs(paths) do
+          vim.fn.delete(path)
+        end
+      end
+
+      return p, buffers, cleanup, paths
+    end
+
+    it("launches all requests before any complete", function()
+      local file_contents = {
+        "local x = 1",
+        "print(x)",
+        "print(x)",
+      }
+
+      local refs = {
+        {
+          buffer_index = 1,
+          range = {
+            start = { line = 1, character = 6 },
+            ["end"] = { line = 1, character = 7 },
+          },
+        },
+        {
+          buffer_index = 1,
+          range = {
+            start = { line = 2, character = 6 },
+            ["end"] = { line = 2, character = 7 },
+          },
+        },
+      }
+
+      local p, _, cleanup = setup_acp_multi_file(
+        { file_contents },
+        refs,
+        { buffer = 1, row = 2, col = 6 }
+      )
+
+      _99.refactor({ additional_prompt = "rename x to y" })
+      test_utils.next_frame()
+
+      eq(2, p:pending_count())
+      cleanup()
+    end)
+
+    it("collects results when completed out of order", function()
+      local file_contents = {
+        "local x = 1",
+        "print(x)",
+        "print(x)",
+      }
+
+      local refs = {
+        {
+          buffer_index = 1,
+          range = {
+            start = { line = 1, character = 6 },
+            ["end"] = { line = 1, character = 7 },
+          },
+        },
+        {
+          buffer_index = 1,
+          range = {
+            start = { line = 2, character = 6 },
+            ["end"] = { line = 2, character = 7 },
+          },
+        },
+      }
+
+      local p, _, cleanup, paths = setup_acp_multi_file(
+        { file_contents },
+        refs,
+        { buffer = 1, row = 2, col = 6 }
+      )
+
+      _99.refactor({ additional_prompt = "rename x to y" })
+      test_utils.next_frame()
+
+      p:resolve(1, "success", "print(y)")
+      test_utils.next_frame()
+
+      eq(1, p:pending_count())
+
+      p:resolve(2, "success", "print(y)")
+      test_utils.next_frame()
+      test_utils.next_frame()
+
+      local result = read_file(paths[1])
+      eq("print(y)", result[2])
+      eq("print(y)", result[3])
+      cleanup()
+    end)
+
+    it("handles partial failures", function()
+      local file_contents = {
+        "local x = 1",
+        "print(x)",
+        "print(x)",
+      }
+
+      local refs = {
+        {
+          buffer_index = 1,
+          range = {
+            start = { line = 1, character = 6 },
+            ["end"] = { line = 1, character = 7 },
+          },
+        },
+        {
+          buffer_index = 1,
+          range = {
+            start = { line = 2, character = 6 },
+            ["end"] = { line = 2, character = 7 },
+          },
+        },
+      }
+
+      local p, _, cleanup, paths = setup_acp_multi_file(
+        { file_contents },
+        refs,
+        { buffer = 1, row = 2, col = 6 }
+      )
+
+      _99.refactor({ additional_prompt = "rename x to y" })
+      test_utils.next_frame()
+
+      p:resolve(1, "failed", "API error")
+      test_utils.next_frame()
+
+      p:resolve(2, "success", "print(y)")
+      test_utils.next_frame()
+      test_utils.next_frame()
+
+      local result = read_file(paths[1])
+      eq("print(x)", result[2])
+      eq("print(y)", result[3])
+      cleanup()
+    end)
+
+    it("applies changes in correct order across files", function()
+      local file1 = { "function foo() end", "foo()" }
+      local file2 = { "local f = require('f')", "f.foo()" }
+
+      local refs = {
+        {
+          buffer_index = 1,
+          range = {
+            start = { line = 1, character = 0 },
+            ["end"] = { line = 1, character = 5 },
+          },
+        },
+        {
+          buffer_index = 2,
+          range = {
+            start = { line = 1, character = 2 },
+            ["end"] = { line = 1, character = 5 },
+          },
+        },
+      }
+
+      local p, _, cleanup, paths = setup_acp_multi_file(
+        { file1, file2 },
+        refs,
+        { buffer = 1, row = 2, col = 0 }
+      )
+
+      _99.refactor({ additional_prompt = "rename foo to bar" })
+      test_utils.next_frame()
+
+      eq(2, p:pending_count())
+
+      p:resolve(2, "success", "f.bar()")
+      test_utils.next_frame()
+
+      p:resolve(1, "success", "bar()")
+      test_utils.next_frame()
+      test_utils.next_frame()
+
+      eq("bar()", read_file(paths[1])[2])
+      eq("f.bar()", read_file(paths[2])[2])
+      cleanup()
+    end)
+  end)
+
+  describe("supports_parallel detection", function()
+    local Providers = require("99.providers")
+
+    it("returns false when no provider_override", function()
+      _99.setup({})
+      local state = _99.__get_state()
+      eq(nil, state.provider_override)
+    end)
+
+    it("returns false for OpenCodeProvider", function()
+      eq("OpenCodeProvider", Providers.OpenCodeProvider._get_provider_name())
+    end)
+
+    it("returns false for ClaudeCodeProvider", function()
+      eq("ClaudeCodeProvider", Providers.ClaudeCodeProvider._get_provider_name())
+    end)
+
+    it("returns true for ACPTestProvider (simulates ACPProvider)", function()
+      local p = test_utils.ACPTestProvider.new()
+      eq("ACPProvider", p._get_provider_name())
+    end)
+  end)
 end)

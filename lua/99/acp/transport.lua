@@ -7,6 +7,7 @@
 --- @field _stdout_buffer string Buffer for incomplete lines
 --- @field _logger _99.Logger
 --- @field _notification_handler fun(notification: table)|nil
+--- @field _request_handler fun(request: table)|nil Handler for agent->client requests
 --- @field _process any Reference to ACPProcess for marking ready
 local ACPTransport = {}
 ACPTransport.__index = ACPTransport
@@ -25,6 +26,7 @@ function ACPTransport.new(proc, logger, process)
     _stdout_buffer = "",
     _logger = logger:set_area("ACPTransport"),
     _notification_handler = nil,
+    _request_handler = nil,
     _process = process,
   }, ACPTransport)
 end
@@ -78,6 +80,52 @@ function ACPTransport:on_notification(handler)
   self._notification_handler = handler
 end
 
+--- Register handler for agent->client requests (e.g., session/request_permission)
+--- @param handler fun(request: table)
+function ACPTransport:on_request(handler)
+  self._request_handler = handler
+end
+
+--- Send a JSON-RPC response (for agent->client requests)
+--- @param id number|string Request ID to respond to
+--- @param result table Response result
+function ACPTransport:respond(id, result)
+  local response = {
+    jsonrpc = "2.0",
+    id = id,
+    result = result,
+  }
+
+  local encoded = vim.json.encode(response) .. "\n"
+  self._logger:debug("Sending response", "rpc_id", id)
+
+  pcall(function()
+    self._proc:write(encoded)
+  end)
+end
+
+--- Send a JSON-RPC error response (for agent->client requests)
+--- @param id number|string Request ID to respond to
+--- @param code number Error code
+--- @param message string Error message
+function ACPTransport:respond_error(id, code, message)
+  local response = {
+    jsonrpc = "2.0",
+    id = id,
+    error = {
+      code = code,
+      message = message,
+    },
+  }
+
+  local encoded = vim.json.encode(response) .. "\n"
+  self._logger:debug("Sending error response", "rpc_id", id, "code", code)
+
+  pcall(function()
+    self._proc:write(encoded)
+  end)
+end
+
 --- Handle stdout data - accumulates buffer and processes complete lines
 --- @param data string Raw stdout data
 function ACPTransport:_handle_stdout(data)
@@ -122,10 +170,16 @@ function ACPTransport:_handle_message(line)
   )
 
   if decoded.id and decoded.result ~= nil then
+    -- Response to our request
     self:_handle_response(decoded)
   elseif decoded.id and decoded.error then
+    -- Error response to our request
     self:_handle_error(decoded)
+  elseif decoded.id and decoded.method then
+    -- Request from agent (needs our response)
+    self:_handle_agent_request(decoded)
   elseif decoded.method then
+    -- Notification from agent (no response needed)
     self:_handle_notification(decoded)
   end
 end
@@ -209,6 +263,53 @@ function ACPTransport:_handle_notification(notification)
     vim.schedule(function()
       self._notification_handler(notification)
     end)
+  end
+end
+
+--- Handle JSON-RPC request from agent (requires response)
+--- @param request table Request with id, method and params
+function ACPTransport:_handle_agent_request(request)
+  self._logger:debug(
+    "Received agent request",
+    "method",
+    request.method,
+    "rpc_id",
+    request.id
+  )
+
+  if self._request_handler then
+    vim.schedule(function()
+      self._request_handler(request)
+    end)
+  else
+    -- No handler registered, auto-respond based on method
+    self:_default_request_handler(request)
+  end
+end
+
+--- Default handler for agent requests when no custom handler is set
+--- @param request table Request with id, method and params
+function ACPTransport:_default_request_handler(request)
+  local method = request.method
+
+  if method == "session/request_permission" then
+    -- Auto-approve all permissions (allow_once)
+    -- This lets OpenCode execute tools without user interaction
+    self._logger:debug(
+      "Auto-approving permission request",
+      "toolCall",
+      request.params and request.params.toolCall
+    )
+    self:respond(request.id, {
+      outcome = {
+        outcome = "selected",
+        optionId = "once",
+      },
+    })
+  else
+    -- Unknown method - respond with error
+    self._logger:warn("Unknown agent request method", "method", method)
+    self:respond_error(request.id, -32601, "Method not found: " .. method)
   end
 end
 

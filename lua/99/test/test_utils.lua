@@ -81,6 +81,86 @@ end
 
 M.TestProvider = TestProvider
 
+--- @class _99.test.ACPTestProvider : _99.Provider
+--- @field requests _99.test.ProviderRequest[]
+local ACPTestProvider = {}
+ACPTestProvider.__index = ACPTestProvider
+
+function ACPTestProvider.new()
+  return setmetatable({ requests = {} }, ACPTestProvider)
+end
+
+--- @param query string
+--- @param request _99.Request
+--- @param observer _99.ProviderObserver?
+function ACPTestProvider:make_request(query, request, observer)
+  local logger = request.context.logger:set_area("ACPTestProvider")
+  logger:debug("make_request", "tmp_file", request.context.tmp_file)
+  table.insert(self.requests, {
+    query = query,
+    request = request,
+    observer = observer,
+    logger = logger,
+  })
+end
+
+function ACPTestProvider._get_provider_name()
+  return "ACPProvider"
+end
+
+function ACPTestProvider._get_default_model()
+  return "anthropic/claude-sonnet-4-5"
+end
+
+--- @param index number
+--- @param status _99.Request.ResponseState
+--- @param result string
+function ACPTestProvider:resolve(index, status, result)
+  local req = self.requests[index]
+  assert(req, "no request at index " .. tostring(index))
+  local obs = req.observer
+  local is_cancelled = req.request:is_cancelled()
+  self.requests[index] = nil
+  if obs then
+    if is_cancelled then
+      obs.on_complete("cancelled", result)
+    else
+      obs.on_complete(status, result)
+    end
+  end
+end
+
+--- @param index number
+--- @param line string
+function ACPTestProvider:stdout(index, line)
+  local req = self.requests[index]
+  assert(req, "no request at index " .. tostring(index))
+  if req.observer then
+    req.observer.on_stdout(line)
+  end
+end
+
+--- @param index number
+--- @param line string
+function ACPTestProvider:stderr(index, line)
+  local req = self.requests[index]
+  assert(req, "no request at index " .. tostring(index))
+  if req.observer then
+    req.observer.on_stderr(line)
+  end
+end
+
+--- @return number
+function ACPTestProvider:pending_count()
+  local count = 0
+  for _ in pairs(self.requests) do
+    count = count + 1
+  end
+  return count
+end
+
+M.ACPTestProvider = ACPTestProvider
+
 function M.clean_files()
   for _, bufnr in ipairs(M.created_files) do
     vim.api.nvim_buf_delete(bufnr, { force = true })

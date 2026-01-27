@@ -10,13 +10,11 @@ function M.initialize_request()
     method = "initialize",
     params = {
       protocolVersion = 1,
-      clientCapabilities = {
-        fs = {
-          readTextFile = true,
-          writeTextFile = true,
-        },
-        terminal = true,
-      },
+      -- Note: OpenCode handles file/terminal operations internally via its own tools,
+      -- so we don't need to advertise fs/terminal capabilities.
+      -- We only need to handle session/request_permission for tool approval flow.
+      -- Use vim.empty_dict() to ensure this encodes as {} (object) not [] (array)
+      clientCapabilities = vim.empty_dict(),
       clientInfo = {
         name = "99.nvim",
         version = "0.1.0",
