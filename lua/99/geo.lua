@@ -180,15 +180,6 @@ function Point.from_mark(mark)
   }, Point)
 end
 
---- @return _99.Point
-function Point.from_visual_start() end
-
---- @return _99.Point
-function Point.from_visual_end()
-  --- make sure you dont allow visual line extend beyond the end of the
-  --- actual text line
-end
-
 --- @class _99.Range
 --- @field start _99.Point
 --- @field end_ _99.Point

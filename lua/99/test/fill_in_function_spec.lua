@@ -1,6 +1,7 @@
 -- luacheck: globals describe it assert
 local _99 = require("99")
 local test_utils = require("99.test.test_utils")
+---@diagnostic disable-next-line: undefined-field
 local eq = assert.are.same
 local Levels = require("99.logger.level")
 
@@ -89,13 +90,17 @@ describe("fill_in_function", function()
 
     eq(content, r(buffer))
 
+    ---@diagnostic disable-next-line: undefined-field
     assert.is_false(p.request.request:is_cancelled())
+    ---@diagnostic disable-next-line: undefined-field
     assert.is_not_nil(p.request)
+    ---@diagnostic disable-next-line: undefined-field
     assert.is_not_nil(p.request.request)
 
     _99.stop_all_requests()
     test_utils.next_frame()
 
+    ---@diagnostic disable-next-line: undefined-field
     assert.is_true(p.request.request:is_cancelled())
 
     p:resolve("success", "function foo()\n    return 42\nend")

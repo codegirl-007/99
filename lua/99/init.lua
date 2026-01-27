@@ -63,7 +63,7 @@ end
 --- @field languages string[]
 --- @field display_errors boolean
 --- @field auto_add_skills boolean
---- @field provider_override _99.Provider?
+--- @field provider_override _99.Providers.BaseProvider?
 --- @field __active_requests table<number, _99.ActiveRequest>
 --- @field __view_log_idx number
 --- @field __request_history _99.RequestEntry[]
@@ -95,7 +95,7 @@ end
 --- @field logger _99.Logger.Options?
 --- @field model string?
 --- @field md_files string[]?
---- @field provider _99.Provider?
+--- @field provider _99.Providers.BaseProvider?
 --- @field debug_log_prefix string?
 --- @field display_errors? boolean
 --- @field auto_add_skills? boolean
@@ -111,7 +111,7 @@ end
 --- @field ai_stdout_rows number
 --- @field languages string[]
 --- @field display_errors boolean
---- @field provider_override _99.Provider?
+--- @field provider_override _99.Providers.BaseProvider?
 --- @field auto_add_skills boolean
 --- @field rules _99.Agents.Rules
 --- @field __active_requests table<number, _99.ActiveRequest>
@@ -294,13 +294,6 @@ function _99.info()
     info,
     string.format("Previous Requests: %d", _99_state:previous_request_count())
   )
-  table.insert(
-    info,
-    string.format("cursor rules(%d):", #(_99_state.rules.cursor or {}))
-  )
-  for _, rule in ipairs(_99_state.rules.cursor or {}) do
-    table.insert(info, string.format("* %s", rule.name))
-  end
   table.insert(
     info,
     string.format("custom rules(%d):", #(_99_state.rules.custom or {}))
@@ -528,9 +521,6 @@ function _99.__debug()
   })
 end
 
--- Export providers for user access
-for name, provider in pairs(Providers) do
-  _99[name] = provider
-end
+_99.Providers = Providers
 
 return _99

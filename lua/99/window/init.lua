@@ -73,6 +73,7 @@ end
 --- @param win _99.window.Window
 ---@param offset_bottom number | nil
 --- @return _99.window.Config
+---@diagnostic disable-next-line
 local function create_window_inside(win, offset_bottom)
   local config = win.config
   offset_bottom = offset_bottom or 0
@@ -99,6 +100,7 @@ local function create_centered_window()
 end
 
 --- @param config _99.window.Config
+---@diagnostic disable-next-line: undefined-doc-name
 --- @param win_config vim.api.keyset.win_config
 --- @return _99.window.Window
 local function create_floating_window(config, win_config)
@@ -111,9 +113,12 @@ local function create_floating_window(config, win_config)
     col = config.col or 0,
     anchor = config.anchor,
     style = "minimal",
+    ---@diagnostic disable-next-line: undefined-field
     border = win_config.border,
+    ---@diagnostic disable-next-line: undefined-field
     title = win_config.title,
     title_pos = "center",
+    ---@diagnostic disable-next-line: undefined-field
     zindex = win_config.zindex,
   })
   local window = {

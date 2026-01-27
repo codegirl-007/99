@@ -19,7 +19,7 @@ M.created_files = {}
 --- @field observer _99.Providers.Observer?
 --- @field logger _99.Logger
 
---- @class _99.test.Provider : _99.Provider
+--- @class _99.test.Provider : _99.Providers.BaseProvider
 --- @field request _99.test.ProviderRequest?
 local TestProvider = {}
 TestProvider.__index = TestProvider

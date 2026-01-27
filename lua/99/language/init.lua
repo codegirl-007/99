@@ -10,30 +10,20 @@ local M = {
   languages = {},
 }
 
---- @alias _99.langauge.GetLangParam _99.Location | number?
+--- @alias _99.langauge.GetLangParam number?
 
---- @param bufferOrLoc _99.langauge.GetLangParam
+--- @param buf _99.langauge.GetLangParam
 --- @return _99.LanguageOps
 --- @return string
 --- @return number
-local function get_langauge(bufferOrLoc)
-  if type(bufferOrLoc) == "number" or not bufferOrLoc then
-    local buffer = bufferOrLoc or vim.api.nvim_get_current_buf()
-    local file_type =
-      vim.api.nvim_get_option_value("filetype", { buf = buffer })
-    local lang = M.languages[file_type]
-    if not lang then
-      Logger:fatal("language currently not supported", "lang", file_type)
-    end
-    return lang, file_type, buffer
-  end
-
-  local file_type = bufferOrLoc.file_type
+local function get_langauge(buf)
+  local buffer = buf or vim.api.nvim_get_current_buf()
+  local file_type = vim.api.nvim_get_option_value("filetype", { buf = buffer })
   local lang = M.languages[file_type]
   if not lang then
     Logger:fatal("language currently not supported", "lang", file_type)
   end
-  return lang, file_type, bufferOrLoc.buffer
+  return lang, file_type, buffer
 end
 
 local function validate_function(fn, file_type)

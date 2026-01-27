@@ -21,6 +21,7 @@ local Providers = require("99.providers")
 --- @field provider _99.Providers.BaseProvider
 --- @field logger _99.Logger
 --- @field _content string[]
+---@diagnostic disable-next-line: undefined-doc-name
 --- @field _proc vim.SystemObj?
 local Request = {}
 Request.__index = Request
@@ -39,6 +40,7 @@ function Request.new(context)
   }, Request)
 end
 
+---@diagnostic disable-next-line: undefined-doc-name
 --- @param proc vim.SystemObj?
 function Request:_set_process(proc)
   self._proc = proc
@@ -47,10 +49,12 @@ end
 function Request:cancel()
   self.logger:debug("cancel")
   self.state = "cancelled"
+    ---@diagnostic disable-next-line: undefined-field
   if self._proc and self._proc.pid then
     pcall(function()
       local sigterm = (vim.uv and vim.uv.constants and vim.uv.constants.SIGTERM)
         or 15
+    ---@diagnostic disable-next-line: undefined-field
       self._proc:kill(sigterm)
     end)
   end
