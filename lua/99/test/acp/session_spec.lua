@@ -548,5 +548,168 @@ describe("acp/session", function()
         "Should mention failed to create session"
       )
     end)
+
+    it("switches model when server returns different model", function()
+      local session, _ = create_active_session({ skip_activation = true })
+
+      -- Server returns a different model than requested
+      local session_new_sent = sent_messages[1]
+      session_new_sent.observer.on_complete("success", {
+        sessionId = "model-switch-session",
+        models = { currentModelId = "different-model" },
+      })
+      test_utils.next_frame()
+
+      -- Should have sent session/set_model
+      local set_model_msg = nil
+      for _, sent in ipairs(sent_messages) do
+        if sent.message and sent.message.method == "session/set_model" then
+          set_model_msg = sent.message
+          break
+        end
+      end
+
+      assert(set_model_msg, "session/set_model should have been sent")
+      eq("model-switch-session", set_model_msg.params.sessionId)
+      eq("test-model", set_model_msg.params.modelId)
+    end)
+
+    it("sends prompt after model switch succeeds", function()
+      local session, _ = create_active_session({ skip_activation = true })
+
+      -- Server returns different model
+      local session_new_sent = sent_messages[1]
+      session_new_sent.observer.on_complete("success", {
+        sessionId = "model-switch-session",
+        models = { currentModelId = "different-model" },
+      })
+      test_utils.next_frame()
+
+      -- Find and complete the set_model request
+      local set_model_sent = nil
+      for _, sent in ipairs(sent_messages) do
+        if sent.message and sent.message.method == "session/set_model" then
+          set_model_sent = sent
+          break
+        end
+      end
+
+      assert(set_model_sent, "session/set_model should have been sent")
+      set_model_sent.observer.on_complete("success", {})
+      test_utils.next_frame()
+
+      -- Now session/prompt should have been sent
+      local prompt_msg = nil
+      for _, sent in ipairs(sent_messages) do
+        if sent.message and sent.message.method == "session/prompt" then
+          prompt_msg = sent.message
+          break
+        end
+      end
+
+      assert(prompt_msg, "session/prompt should have been sent after model switch")
+      eq("model-switch-session", prompt_msg.params.sessionId)
+    end)
+
+    it("continues with prompt even when model switch fails", function()
+      local session, _ = create_active_session({ skip_activation = true })
+
+      -- Server returns different model
+      local session_new_sent = sent_messages[1]
+      session_new_sent.observer.on_complete("success", {
+        sessionId = "model-switch-session",
+        models = { currentModelId = "different-model" },
+      })
+      test_utils.next_frame()
+
+      -- Find and fail the set_model request
+      local set_model_sent = nil
+      for _, sent in ipairs(sent_messages) do
+        if sent.message and sent.message.method == "session/set_model" then
+          set_model_sent = sent
+          break
+        end
+      end
+
+      assert(set_model_sent, "session/set_model should have been sent")
+      set_model_sent.observer.on_complete("failed", "Model not available")
+      test_utils.next_frame()
+
+      -- session/prompt should still be sent (fallback to default model)
+      local prompt_msg = nil
+      for _, sent in ipairs(sent_messages) do
+        if sent.message and sent.message.method == "session/prompt" then
+          prompt_msg = sent.message
+          break
+        end
+      end
+
+      assert(prompt_msg, "session/prompt should still be sent after model switch failure")
+    end)
+
+    it("fails when session/prompt fails", function()
+      local session, _ = create_active_session({ skip_activation = true })
+
+      -- Complete session/new successfully
+      local session_new_sent = sent_messages[1]
+      session_new_sent.observer.on_complete("success", {
+        sessionId = "prompt-fail-session",
+        models = { currentModelId = "test-model" },
+      })
+      test_utils.next_frame()
+
+      -- Find and fail the prompt request
+      local prompt_sent = nil
+      for _, sent in ipairs(sent_messages) do
+        if sent.message and sent.message.method == "session/prompt" then
+          prompt_sent = sent
+          break
+        end
+      end
+
+      assert(prompt_sent, "session/prompt should have been sent")
+      prompt_sent.observer.on_complete("failed", "Rate limited")
+      test_utils.next_frame()
+
+      eq("failed", observer_calls.on_complete.status)
+      assert(
+        observer_calls.on_complete.result:find("Failed to send prompt"),
+        "Should mention failed to send prompt"
+      )
+    end)
+
+    it("skips model switch when models match", function()
+      local session, _ = create_active_session({ skip_activation = true })
+
+      -- Server returns same model as requested
+      local session_new_sent = sent_messages[1]
+      session_new_sent.observer.on_complete("success", {
+        sessionId = "same-model-session",
+        models = { currentModelId = "test-model" },
+      })
+      test_utils.next_frame()
+
+      -- Should NOT have sent session/set_model
+      local set_model_msg = nil
+      for _, sent in ipairs(sent_messages) do
+        if sent.message and sent.message.method == "session/set_model" then
+          set_model_msg = sent.message
+          break
+        end
+      end
+
+      eq(nil, set_model_msg)
+
+      -- But should have sent session/prompt directly
+      local prompt_msg = nil
+      for _, sent in ipairs(sent_messages) do
+        if sent.message and sent.message.method == "session/prompt" then
+          prompt_msg = sent.message
+          break
+        end
+      end
+
+      assert(prompt_msg, "session/prompt should have been sent directly")
+    end)
   end)
 end)
