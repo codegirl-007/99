@@ -251,7 +251,8 @@ function ACPSession:handle_update(update)
           content ~= nil
         )
 
-        if content then
+        -- Only capture if writing to our tmp_file
+        if content and target_path == self.request.context.tmp_file then
           self.last_tool_write_content = content
           self.logger:debug(
             "Captured tool write content from rawInput",

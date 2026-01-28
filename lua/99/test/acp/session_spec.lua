@@ -284,6 +284,22 @@ describe("acp/session", function()
       eq("response from tool", session.last_tool_write_content)
     end)
 
+    it("ignores rawInput for wrong path", function()
+      local session, _ = create_active_session()
+
+      session:handle_update({
+        sessionUpdate = "tool_call_update",
+        toolCallId = "call-1",
+        status = "in_progress",
+        rawInput = {
+          filePath = "/some/other/file.txt",
+          content = "wrong file content",
+        },
+      })
+
+      eq(nil, session.last_tool_write_content)
+    end)
+
     it("captures tool write content from diff", function()
       local session, _ = create_active_session()
 
