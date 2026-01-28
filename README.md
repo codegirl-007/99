@@ -109,7 +109,7 @@ I make the assumption you are using Lazy
 ## Completion
 When prompting, if you have cmp installed as your autocomplete you can use an autocomplete for rule inclusion in your prompt.
 
-You can also specify a directory for rule inclusion, and this plugin auto looks into `.cursor/rules` unless you override it
+How skill completion and inclusion works is that you start by typing `@`.
 
 ## API
 You can see the full api at [99 API](./lua/99/init.lua)
