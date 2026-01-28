@@ -174,6 +174,187 @@ function ACPSession.new(
   return self
 end
 
+--- Update type constants
+local UpdateType = {
+  AGENT_MESSAGE_CHUNK = "agent_message_chunk",
+  AGENT_THOUGHT_CHUNK = "agent_thought_chunk",
+  USER_MESSAGE_CHUNK = "user_message_chunk",
+  TOOL_CALL = "tool_call",
+  TOOL_CALL_UPDATE = "tool_call_update",
+  PLAN = "plan",
+  AVAILABLE_COMMANDS = "available_commands_update",
+  CURRENT_MODE = "current_mode_update",
+  ERROR = "error",
+}
+
+--- Handle agent_message_chunk update
+--- @param self ACPSession
+--- @param update table
+local function handle_agent_message_chunk(self, update)
+  local content = update.content
+  if content and content.type == "text" and content.text then
+    table.insert(self.response_chunks, content.text)
+    vim.schedule(function()
+      self.observer.on_stdout(content.text)
+    end)
+  end
+end
+
+--- Handle agent_thought_chunk update
+--- @param self ACPSession
+--- @param update table
+local function handle_agent_thought_chunk(self, update)
+  local content = update.content
+  if content and content.type == "text" and content.text then
+    self.logger:debug("Agent thought", "text", content.text)
+  end
+end
+
+--- Handle tool_call update
+--- @param self ACPSession
+--- @param update table
+local function handle_tool_call(self, update)
+  self.logger:debug(
+    "Tool call",
+    "toolCallId",
+    update.toolCallId,
+    "title",
+    update.title
+  )
+end
+
+--- Try to capture content from rawInput if it matches our tmp_file
+--- @param self ACPSession
+--- @param update table
+local function try_capture_from_raw_input(self, update)
+  local raw_input = update.rawInput
+  if not raw_input then
+    return
+  end
+
+  local target_path = raw_input.filePath or raw_input.path
+  local content = raw_input.content
+
+  self.logger:debug(
+    "Tool write details",
+    "target_path",
+    target_path,
+    "expected_path",
+    self.request.context.tmp_file,
+    "has_content",
+    content ~= nil
+  )
+
+  if content and target_path == self.request.context.tmp_file then
+    self.last_tool_write_content = content
+    self.logger:debug(
+      "Captured tool write content from rawInput",
+      "content_length",
+      #content
+    )
+  end
+end
+
+--- Try to capture content from diff in content array
+--- @param self ACPSession
+--- @param update table
+local function try_capture_from_content_array(self, update)
+  if not update.content then
+    return
+  end
+
+  for _, content_item in ipairs(update.content) do
+    if content_item.type == "content" and content_item.content then
+      local inner = content_item.content
+      if inner.type == "text" and inner.text then
+        self.logger:debug("Tool content text", "text_length", #inner.text)
+      end
+    elseif content_item.type == "diff" then
+      self.logger:debug(
+        "Tool diff",
+        "path",
+        content_item.path,
+        "has_newText",
+        content_item.newText ~= nil
+      )
+      if
+        content_item.path == self.request.context.tmp_file
+        and content_item.newText
+      then
+        self.last_tool_write_content = content_item.newText
+        self.logger:debug(
+          "Captured tool write content from diff",
+          "content_length",
+          #content_item.newText
+        )
+      end
+    end
+  end
+end
+
+--- Handle tool_call_update update
+--- @param self ACPSession
+--- @param update table
+local function handle_tool_call_update(self, update)
+  self.logger:debug(
+    "Tool call update",
+    "toolCallId",
+    update.toolCallId,
+    "status",
+    update.status,
+    "title",
+    update.title,
+    "kind",
+    update.kind
+  )
+
+  if update.status ~= "in_progress" and update.status ~= "completed" then
+    return
+  end
+
+  try_capture_from_raw_input(self, update)
+
+  local raw_output = update.rawOutput
+  if raw_output and raw_output.output then
+    self.logger:debug("Tool output received", "output_length", #raw_output.output)
+  end
+
+  try_capture_from_content_array(self, update)
+end
+
+--- Handle error update
+--- @param self ACPSession
+--- @param update table
+local function handle_error(self, update)
+  self.state = "completed"
+  self:_clear_timeout()
+  local error_msg = update.message or update.error or "ACP error"
+  vim.schedule(function()
+    self.observer.on_complete("failed", error_msg)
+  end)
+end
+
+--- Dispatch table for update handlers
+local update_handlers = {
+  [UpdateType.AGENT_MESSAGE_CHUNK] = handle_agent_message_chunk,
+  [UpdateType.AGENT_THOUGHT_CHUNK] = handle_agent_thought_chunk,
+  [UpdateType.USER_MESSAGE_CHUNK] = function(self, update)
+    self.logger:debug("User message chunk received", "content", update.content)
+  end,
+  [UpdateType.TOOL_CALL] = handle_tool_call,
+  [UpdateType.TOOL_CALL_UPDATE] = handle_tool_call_update,
+  [UpdateType.PLAN] = function(self, update)
+    self.logger:debug("Plan update", "entries", update.entries)
+  end,
+  [UpdateType.AVAILABLE_COMMANDS] = function(self, update)
+    self.logger:debug("Available commands", "commands", update.availableCommands)
+  end,
+  [UpdateType.CURRENT_MODE] = function(self, update)
+    self.logger:debug("Mode changed", "currentModeId", update.currentModeId)
+  end,
+  [UpdateType.ERROR] = handle_error,
+}
+
 --- Handle session/update notification
 --- @param update table ACP update notification params (the 'update' field from params)
 function ACPSession:handle_update(update)
@@ -198,129 +379,9 @@ function ACPSession:handle_update(update)
     return
   end
 
-  if session_update == "agent_message_chunk" then
-    local content = update.content
-    if content and content.type == "text" and content.text then
-      table.insert(self.response_chunks, content.text)
-      vim.schedule(function()
-        self.observer.on_stdout(content.text)
-      end)
-    end
-  elseif session_update == "agent_thought_chunk" then
-    local content = update.content
-    if content and content.type == "text" and content.text then
-      self.logger:debug("Agent thought", "text", content.text)
-    end
-  elseif session_update == "user_message_chunk" then
-    self.logger:debug("User message chunk received", "content", update.content)
-  elseif session_update == "tool_call" then
-    self.logger:debug(
-      "Tool call",
-      "toolCallId",
-      update.toolCallId,
-      "title",
-      update.title
-    )
-  elseif session_update == "tool_call_update" then
-    self.logger:debug(
-      "Tool call update",
-      "toolCallId",
-      update.toolCallId,
-      "status",
-      update.status,
-      "title",
-      update.title,
-      "kind",
-      update.kind
-    )
-
-    if update.status == "in_progress" or update.status == "completed" then
-      -- Check rawInput for write tool content (filePath + content)
-      local raw_input = update.rawInput
-      if raw_input then
-        local target_path = raw_input.filePath or raw_input.path
-        local content = raw_input.content
-
-        self.logger:debug(
-          "Tool write details",
-          "target_path",
-          target_path,
-          "expected_path",
-          self.request.context.tmp_file,
-          "has_content",
-          content ~= nil
-        )
-
-        -- Only capture if writing to our tmp_file
-        if content and target_path == self.request.context.tmp_file then
-          self.last_tool_write_content = content
-          self.logger:debug(
-            "Captured tool write content from rawInput",
-            "content_length",
-            #content
-          )
-        end
-      end
-
-      -- Check rawOutput for tool output (OpenCode sends this on completion)
-      local raw_output = update.rawOutput
-      if raw_output and raw_output.output then
-        self.logger:debug(
-          "Tool output received",
-          "output_length",
-          #raw_output.output
-        )
-      end
-
-      -- Check content array for tool results (includes text and diffs)
-      if update.content then
-        for _, content_item in ipairs(update.content) do
-          if content_item.type == "content" and content_item.content then
-            local inner = content_item.content
-            if inner.type == "text" and inner.text then
-              self.logger:debug("Tool content text", "text_length", #inner.text)
-            end
-          elseif content_item.type == "diff" then
-            self.logger:debug(
-              "Tool diff",
-              "path",
-              content_item.path,
-              "has_newText",
-              content_item.newText ~= nil
-            )
-            -- If the diff is for our tmp_file, capture the newText
-            if
-              content_item.path == self.request.context.tmp_file
-              and content_item.newText
-            then
-              self.last_tool_write_content = content_item.newText
-              self.logger:debug(
-                "Captured tool write content from diff",
-                "content_length",
-                #content_item.newText
-              )
-            end
-          end
-        end
-      end
-    end
-  elseif session_update == "plan" then
-    self.logger:debug("Plan update", "entries", update.entries)
-  elseif session_update == "available_commands_update" then
-    self.logger:debug(
-      "Available commands",
-      "commands",
-      update.availableCommands
-    )
-  elseif session_update == "current_mode_update" then
-    self.logger:debug("Mode changed", "currentModeId", update.currentModeId)
-  elseif session_update == "error" then
-    self.state = "completed"
-    self:_clear_timeout()
-    local error_msg = update.message or update.error or "ACP error"
-    vim.schedule(function()
-      self.observer.on_complete("failed", error_msg)
-    end)
+  local handler = update_handlers[session_update]
+  if handler then
+    handler(self, update)
   else
     self.logger:debug(
       "Unknown session update type",
