@@ -406,8 +406,12 @@ function ACPSession:cancel()
   self.state = "cancelled"
   self:_clear_timeout()
 
-  local cancel_msg = Message.session_cancel_notification(self.session_id)
-  self.process:_write_message(cancel_msg)
+  -- Only send cancel notification if we have a session_id
+  -- (may be nil if cancelled during "creating" state before session/new response)
+  if self.session_id then
+    local cancel_msg = Message.session_cancel_notification(self.session_id)
+    self.process:_write_message(cancel_msg)
+  end
 end
 
 --- Clear timeout timer

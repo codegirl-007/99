@@ -149,6 +149,30 @@ describe("acp/session", function()
       eq("cancel-test", cancel_msg.params.sessionId)
     end)
 
+    it("cancel skips notification when session_id is nil", function()
+      local session, _ = create_active_session({ skip_activation = true })
+      eq("creating", session.state)
+      eq(nil, session.session_id)
+
+      local msg_count_before = #sent_messages
+
+      session:cancel()
+
+      eq("cancelled", session.state)
+
+      -- Should NOT have sent a cancel message
+      local cancel_msg = nil
+      for i = msg_count_before + 1, #sent_messages do
+        local msg = sent_messages[i]
+        if msg.message and msg.message.method == "session/cancel" then
+          cancel_msg = msg.message
+          break
+        end
+      end
+
+      eq(nil, cancel_msg)
+    end)
+
     it("ignores duplicate cancel calls", function()
       local session, _ = create_active_session()
       local msg_count_before = #sent_messages
