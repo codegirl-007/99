@@ -1,4 +1,21 @@
 --- ACPProvider - OpenCode Agent Client Protocol provider
+---
+--- Why ACP over CLI?
+--- The CLI providers (opencode run, claude --print) hold locks that prevent
+--- parallel execution. ACP allows multiple concurrent sessions on a single
+--- long-lived process, enabling parallel multi-file refactors.
+---
+--- Concurrency Model:
+--- - One shared ACPProcess spawns `opencode acp` and stays alive
+--- - Multiple ACPSessions run concurrently (up to _max_concurrent_sessions)
+--- - Sessions are tracked by temp_id until session/new returns the real session_id
+--- - Notifications may arrive before session_id is known, requiring dual lookup
+---
+--- OpenCode Limitations (as of writing):
+--- - No slash commands or session modes advertised
+--- - No fs/read_text_file or fs/write_text_file support
+--- - We use "write to tmp file" prompt pattern for response extraction
+---
 local ACPProcess = require("99.acp.process")
 local ACPTransport = require("99.acp.transport")
 local ACPSession = require("99.acp.session")
@@ -6,10 +23,14 @@ local ACPSession = require("99.acp.session")
 local BaseProvider = require("99.providers").BaseProvider
 
 --- @class ACPProvider : BaseProvider
---- @field _shared_process ACPProcess? Singleton process instance
---- @field _active_sessions table<string, ACPSession> Map of session_id to ACPSession
---- @field _max_concurrent_sessions number Maximum concurrent sessions
---- @field _next_temp_id number Counter for unique temp IDs
+--- @field _shared_process ACPProcess? Singleton process instance shared across all sessions
+--- @field _active_sessions table<string, ACPSession>
+---   Map of session_id to ACPSession. Sessions are initially keyed by temp_id
+---   (generated client-side) until session/new responds with the real session_id.
+---   During high concurrency, session/update notifications may arrive before the
+---   ID swap completes, so notification routing checks both map key and session.session_id.
+--- @field _max_concurrent_sessions number Maximum concurrent sessions (enables parallel multi-file refactors)
+--- @field _next_temp_id number Counter for generating unique temp IDs before real session_id is known
 local ACPProvider = setmetatable({}, { __index = BaseProvider })
 
 ACPProvider._shared_process = nil
@@ -66,6 +87,9 @@ function ACPProvider:make_request(query, request, observer)
             if session_id then
               local session = self._active_sessions[session_id]
 
+              -- Dual lookup: session may be keyed by real session_id (normal case)
+              -- or still keyed by temp_id if session/new response hasn't arrived yet.
+              -- This handles the race where updates stream before we know the real ID.
               if not session then
                 for _, sess in pairs(self._active_sessions) do
                   if sess.session_id == session_id then

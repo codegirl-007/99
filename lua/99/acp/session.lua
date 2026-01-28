@@ -4,14 +4,18 @@ local Message = require("99.acp.message")
 local _session_counter = 0
 
 --- @class ACPSession
---- @field session_id string ACP session identifier
+--- @field session_id string ACP session identifier (nil until session/new responds)
 --- @field request _99.Request Request object
 --- @field observer _99.ProviderObserver Callbacks for this session
 --- @field state "creating" | "active" | "completed" | "cancelled"
 --- @field process any ACPProcess instance
 --- @field logger _99.Logger
 --- @field timeout_timer number|nil Timer for request timeout
---- @field _pending_updates table Buffered updates received before session was active
+--- @field _pending_updates table
+---   Buffer for session/update notifications that arrive while state is "creating".
+---   Race condition: OpenCode may stream updates before we process the session/new
+---   response (which provides the session_id). These buffered updates are replayed
+---   via _replay_pending_updates() once the session transitions to "active".
 local ACPSession = {}
 ACPSession.__index = ACPSession
 
@@ -347,6 +351,11 @@ function ACPSession:_finalize()
   self.logger:debug("Finalizing session", "session_id", self.session_id)
 
   vim.schedule(function()
+    -- Response extraction priority:
+    -- 1. last_tool_write_content: Captured from tool_call_update when OpenCode
+    --    writes to our tmp_file (most reliable when available)
+    -- 2. tmp_file: Read directly from disk (works when we missed the tool update)
+    -- 3. response_chunks: Accumulated agent_message_chunks (fallback, rarely used)
     if self.last_tool_write_content then
       self.logger:debug(
         "Using captured tool write content",

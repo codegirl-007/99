@@ -10,9 +10,13 @@ function M.initialize_request()
     method = "initialize",
     params = {
       protocolVersion = 1,
-      -- Note: OpenCode handles file/terminal operations internally via its own tools,
-      -- so we don't need to advertise fs/terminal capabilities.
-      -- We only need to handle session/request_permission for tool approval flow.
+      -- Empty capabilities is intentional for current OpenCode integration:
+      -- 1. OpenCode's ACP doesn't use fs/read_text_file or fs/write_text_file —
+      --    it uses its own internal file tools that write directly to disk
+      -- 2. We use the "write to tmp file" prompt pattern for response extraction,
+      --    which works consistently across all providers (CLI and ACP)
+      -- 3. Terminal capabilities aren't needed for our fill-in-function/refactor use cases
+      -- When OpenCode's ACP matures with more capabilities, we may advertise them here.
       -- Use vim.empty_dict() to ensure this encodes as {} (object) not [] (array)
       clientCapabilities = vim.empty_dict(),
       clientInfo = {
