@@ -1,8 +1,6 @@
 --- ACP session lifecycle management
 local Message = require("99.acp.message")
 
-local _session_counter = 0
-
 --- @class ACPSession
 --- @field session_id string ACP session identifier (nil until session/new responds)
 --- @field request _99.Request Request object
@@ -18,14 +16,6 @@ local _session_counter = 0
 ---   via _replay_pending_updates() once the session transitions to "active".
 local ACPSession = {}
 ACPSession.__index = ACPSession
-
---- Generate unique session ID
---- @param request_xid number Request tracking ID
---- @return string
-local function generate_session_id(request_xid)
-  _session_counter = _session_counter + 1
-  return string.format("99nvim-%d-%d", request_xid, _session_counter)
-end
 
 --- Create new ACP session
 --- @param process any ACPProcess
