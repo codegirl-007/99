@@ -120,28 +120,22 @@ describe("Mark", function()
     mark:delete()
   end)
 
-  it("should handle mark_above_func when function starts at first line (row 1)", function()
-    -- This tests the bug where mark_above_func calculates line - 1
-    -- When function starts at row 1 (line 0 in vim), line - 1 = -1 which is invalid
-    local func_start = Point:new(1, 1) -- First line of buffer
-    local func_end = Point:new(4, 4)
-    local func_range = Range:new(buffer, func_start, func_end)
-    local mock_func = {
-      function_range = func_range,
-    }
+  it(
+    "should handle mark_above_func when function starts at first line (row 1)",
+    function()
+      local func_start = Point:new(1, 1)
+      local func_end = Point:new(4, 4)
+      local func_range = Range:new(buffer, func_start, func_end)
+      local mock_func = {
+        function_range = func_range,
+      }
 
-    -- This should not crash with "Invalid 'line': out of range"
-    local ok, err = pcall(Mark.mark_above_func, buffer, mock_func)
-    assert.is_true(ok, "mark_above_func crashed: " .. tostring(err))
-
-    if ok then
       local mark = Mark.mark_above_func(buffer, mock_func)
       local mark_point = Point.from_mark(mark)
-      -- When at first line, mark should be placed at the beginning of line 1
       eq(1, mark_point.row)
       mark:delete()
     end
-  end)
+  )
 
   it("should create mark at function body start", function()
     local func_start = Point:new(6, 1)
