@@ -336,7 +336,7 @@ end
 
 --- @param opts _99.ops.Opts
 function _99.visual_prompt(opts)
-  warn("use visual, visual_prompt has been deprecated")
+  print("use visual, visual_prompt has been deprecated")
   _99.visual(opts)
 end
 
