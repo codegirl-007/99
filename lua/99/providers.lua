@@ -211,6 +211,7 @@ end
 -- We could use the Anthropic API (https://docs.anthropic.com/en/api/models)
 -- but that requires the user to have an ANTHROPIC_API_KEY set which isn't ideal.
 -- Until Anthropic adds a CLI command for this, we have to hardcode the list here.
+-- See https://github.com/anthropics/claude-code/issues/12612
 function ClaudeCodeProvider.fetch_models(callback)
   callback({
     "claude-opus-4-6",
