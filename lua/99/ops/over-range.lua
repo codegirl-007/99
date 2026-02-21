@@ -75,6 +75,12 @@ local function over_range(context, opts)
           return
         end
 
+        if vim.trim(response) == "" then
+          print("response was empty, visual replacement aborted")
+          logger:debug("response was empty, visual replacement aborted")
+          return
+        end
+
         local new_range = Range.from_marks(top_mark, bottom_mark)
         local lines = vim.split(response, "\n")
 
