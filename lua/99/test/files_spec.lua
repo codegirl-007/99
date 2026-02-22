@@ -230,7 +230,7 @@ describe("files git integration", function()
       return _mocks.system_output
     end
 
-    vim.uv.fs_stat = function(path)
+    vim.uv.fs_stat = function(_path)
       if _mocks.stat_exists then
         return { type = _mocks.stat_type }
       end
@@ -353,7 +353,7 @@ describe("files git integration", function()
     _mocks.system_exit = 128 -- Git failure
 
     local orig_scandir = vim.uv.fs_scandir
-    vim.uv.fs_scandir = function(dir)
+    vim.uv.fs_scandir = function(_dir)
       return nil -- Empty directory
     end
 
@@ -421,7 +421,7 @@ describe("files git integration", function()
 
     local orig_scandir = vim.uv.fs_scandir
     local fs_called = false
-    vim.uv.fs_scandir = function(dir)
+    vim.uv.fs_scandir = function(_dir)
       fs_called = true
       return nil -- Empty
     end
