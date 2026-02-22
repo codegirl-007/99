@@ -84,7 +84,7 @@ end
 --- @return _99.Files.File[]
 local function scan_with_git_sync(root)
   local cmd = string.format(
-    "git -C %s ls-files --cached --others --exclude-standard",
+    "git -C %s ls-files --cached --others --exclude-standard --deduplicate",
     vim.fn.shellescape(root)
   )
   local output = vim.fn.system(cmd)
@@ -106,14 +106,18 @@ local function scan_with_git_sync(root)
     end
 
     line = vim.trim(line)
-    if line ~= "" and not matches_exclude_pattern(line) then
+    if line ~= "" then
       local name = line:match("([^/]+)$") or line
-      table.insert(files, {
-        path = line,
-        name = name,
-        absolute_path = vim.fs.joinpath(root, line),
-      })
-      count = count + 1
+      if
+        not matches_exclude_pattern(line) and not matches_exclude_pattern(name)
+      then
+        table.insert(files, {
+          path = line,
+          name = name,
+          absolute_path = vim.fs.joinpath(root, line),
+        })
+        count = count + 1
+      end
     end
   end
 

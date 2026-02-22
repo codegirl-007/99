@@ -398,6 +398,55 @@ describe("files git integration", function()
     end
   end)
 
+  it(
+    "excludes files by filename (not just path) consistent with fs scanner",
+    function()
+      _mocks.stat_exists = true
+      _mocks.stat_type = "directory"
+      _mocks.system_output = "README.md\nsrc/builder.js\nsrc/build/config.lua\n"
+      _mocks.system_exit = 0
+
+      Files.setup({
+        enabled = true,
+        exclude = { "build" },
+      }, {})
+
+      local files = Files.discover_files()
+
+      assert.are.equal(1, #files)
+      eq("README.md", files[1].path)
+
+      for _, f in ipairs(files) do
+        assert.is_nil(
+          f.name:match("^build"),
+          "files starting with 'build' should be excluded"
+        )
+      end
+    end
+  )
+
+  it("uses --deduplicate flag to handle merge conflict duplicates", function()
+    _mocks.stat_exists = true
+    _mocks.stat_type = "directory"
+
+    _mocks.system_output = "README.md\nREADME.md\nREADME.md\n"
+    _mocks.system_exit = 0
+
+    local files = Files.discover_files()
+
+    local has_deduplicate = false
+    for _, cmd in ipairs(_mocks.system_calls) do
+      if cmd:match("%-%-deduplicate") then
+        has_deduplicate = true
+        break
+      end
+    end
+    assert.is_true(
+      has_deduplicate,
+      "git command should include --deduplicate flag"
+    )
+  end)
+
   it("uses git-based discovery in git repo", function()
     _mocks.stat_exists = true
     _mocks.stat_type = "directory"
@@ -417,8 +466,7 @@ describe("files git integration", function()
   end)
 
   it("falls back to filesystem when not in git repo", function()
-    _mocks.stat_exists = false -- .git doesn't exist
-
+    _mocks.stat_exists = false
     local orig_scandir = vim.uv.fs_scandir
     local fs_called = false
     vim.uv.fs_scandir = function(_dir)
