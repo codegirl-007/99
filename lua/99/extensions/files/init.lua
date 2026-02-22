@@ -71,6 +71,47 @@ function M.set_project_root(root)
   cache.files = {}
 end
 
+--- @param root string
+--- @return boolean
+local function is_git_repo(root)
+  local git_dir = vim.fs.joinpath(root, ".git")
+  local stat = vim.uv.fs_stat(git_dir)
+  return stat ~= nil and stat.type == "directory"
+end
+
+--- @param root string
+--- @return _99.Files.File[]
+local function scan_with_git_sync(root)
+  local cmd = string.format("git -C %s ls-files --cached --others --exclude-standard", vim.fn.shellescape(root))
+  local output = vim.fn.system(cmd)
+
+  if vim.v.shell_error ~= 0 or output == "" then
+    return nil
+  end
+
+  local files = {}
+  local count = 0
+
+  for line in output:gmatch("[^\n]+") do
+    if count >= config.max_files then
+      break
+    end
+
+    line = vim.trim(line)
+    if line ~= "" and not matches_exclude_pattern(line) then
+      local name = line:match("([^/]+)$") or line
+      table.insert(files, {
+        path = line,
+        name = name,
+        absolute_path = vim.fs.joinpath(root, line),
+      })
+      count = count + 1
+    end
+  end
+
+  return files
+end
+
 --- @return string
 function M.get_project_root()
   return cache.root
@@ -83,6 +124,19 @@ function M.discover_files()
     return {}
   end
 
+  -- Try git-based discovery first if in a git repo
+  if is_git_repo(root) then
+    local git_files = scan_with_git_sync(root)
+    if git_files then
+      table.sort(git_files, function(a, b)
+        return a.path < b.path
+      end)
+      cache.files = git_files
+      return git_files
+    end
+  end
+
+  -- Fallback to filesystem scanning
   local files = {}
   local count = 0
 
@@ -140,7 +194,7 @@ end
 
 --- @return _99.Files.File[]
 function M.get_files()
-  if #cache.files == 0 and cache.root ~= "" then
+  if #cache.files == 0 then
     return M.discover_files()
   end
   return cache.files

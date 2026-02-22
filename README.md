@@ -92,6 +92,10 @@ I make the assumption you are using Lazy
                         -- max_files = 5000,            -- cap on total discovered files
                         -- exclude = { ".env", ".env.*", "node_modules", ".git", ... },
                     },
+                    --- File Discovery:
+                    --- - In git repos: Uses `git ls-files` which automatically respects .gitignore
+                    --- - Non-git repos: Falls back to filesystem scanning with manual excludes
+                    --- - Both methods apply the configured `exclude` list on top of gitignore
 
                     --- What autocomplete you use.
                     source = "cmp" | "blink",
@@ -139,7 +143,7 @@ I make the assumption you are using Lazy
 When prompting, you can reference rules and files to add context to your request.
 
 - `#` references rules — type `#` in the prompt to autocomplete rule files from your configured rule directories
-- `@` references files — type `@` to fuzzy-search project files
+- `@` references files — type `@` to fuzzy-search project files. This will exclude files that are in .gitignore.
 
 Referenced content is automatically resolved and injected into the AI context. Requires cmp (`source = "cmp"` in your completion config).
 
