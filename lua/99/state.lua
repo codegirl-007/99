@@ -46,7 +46,7 @@ local function create()
     prompts = require("99.prompt-settings"),
     ai_stdout_rows = 3,
     show_in_flight_requests = false,
-    languages = { "lua", "go", "java", "elixir", "cpp", "ruby" },
+    languages = { "lua", "go", "java", "elixir", "cpp", "ruby", "markdown" },
     display_errors = false,
     provider_override = nil,
     auto_add_skills = false,
