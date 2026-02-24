@@ -12,18 +12,18 @@ local make_observer = CleanUp.make_observer
 
 --- @param context _99.Prompt
 ---@param opts _99.ops.SearchOpts
-local function search(context, opts)
+local function vibe(context, opts)
   opts = opts or {}
 
-  local logger = context.logger:set_area("search")
-  logger:debug("search", "with opts", opts.additional_prompt)
+  local logger = context.logger:set_area("vibe")
+  logger:debug("vibe", "with opts", opts.additional_prompt)
 
   local clean_up = make_clean_up(function()
     context:stop()
   end)
 
   local prompt, refs =
-    make_prompt(context, context._99.prompts.prompts.semantic_search(), opts)
+    make_prompt(context, context._99.prompts.prompts.vibe(), opts)
 
   context:add_prompt_content(prompt)
   context:add_references(refs)
@@ -45,8 +45,10 @@ local function search(context, opts)
         response or "no response provided"
       )
     elseif status == "success" then
-      create_search_locations(context, response)
+      -- create_search_locations(context, response)
+      -- need to parse out everything so i we can qfix list
+      print("done", response)
     end
   end))
 end
-return search
+return vibe

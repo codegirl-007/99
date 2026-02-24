@@ -317,7 +317,6 @@ function Prompt:qfix_data()
   return self.data.xfix_items
 end
 
-
 function Prompt:stop()
   self:cancel()
   for _, cb in ipairs(self.clean_ups) do
@@ -444,6 +443,15 @@ function Prompt:finalize()
     self.agent_context,
     self._99.prompts.tmp_file_location(self.tmp_file)
   )
+
+  if
+    self.operation == "visual"
+    or self.operation == "tutorial"
+    or self.operation == "search"
+  then
+    table.insert(self.agent_context, self._99.prompts.only_tmp_file_change())
+  end
+
   return true, self
 end
 
