@@ -222,10 +222,21 @@ function Prompt:_observer(obs)
   }
 end
 
+local allowed_context_types = {
+  "visual",
+  "search",
+  "tutorial",
+  "vibe",
+}
 --- @return boolean
 function Prompt:valid()
   local t = self.data.type
-  return t == "visual" or t == "search" or t == "tutorial"
+  for _, allowed in ipairs(allowed_context_types) do
+    if t == allowed then
+      return true
+    end
+  end
+  return false
 end
 
 --- @param observer _99.Providers.Observer?

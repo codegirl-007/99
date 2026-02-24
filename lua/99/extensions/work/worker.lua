@@ -19,6 +19,9 @@ local utils = require("99.utils")
 --- considered done
 local M = {}
 
+local DEFAULT_WORK_DESCRIPTION =
+  "Put in the description of the work you want to complete"
+
 --- @class _99.WorkOpts
 --- @docs included
 --- @field description string | nil
@@ -48,6 +51,14 @@ local function read_work_item()
   return contents
 end
 
+--- @return string | nil
+local function hydrate_current_work_item()
+  if M.current_work_item == nil then
+    M.current_work_item = read_work_item()
+  end
+  return M.current_work_item or DEFAULT_WORK_DESCRIPTION
+end
+
 --- @param success boolean
 ---@param result string
 local function set_work_item_cb(success, result)
@@ -66,8 +77,7 @@ local function set_work_item_cb(success, result)
 end
 
 function M.update_work()
-  local work = M.current_work_item
-    or "Put in the description of the work you want to complete"
+  local work = hydrate_current_work_item()
   Window.capture_input(" Work ", {
     cb = set_work_item_cb,
     content = vim.split(work, "\n"),
@@ -79,11 +89,12 @@ function M.set_work(opts)
   opts = opts or {}
   local description = opts.description
   if description then
-    M.current_work_item = description
+    set_work_item_cb(true, description)
   else
+    local work = hydrate_current_work_item()
     Window.capture_input(" Work ", {
       cb = set_work_item_cb,
-      content = { M.current_work_item or "Put in the description of the work you want to complete" },
+      content = { work },
     })
   end
 
@@ -132,9 +143,7 @@ end
 
 function M.work()
   local _99 = require("99")
-  if M.current_work_item == nil then
-    M.current_work_item = read_work_item()
-  end
+  hydrate_current_work_item()
 
   assert(
     M.current_work_item,
