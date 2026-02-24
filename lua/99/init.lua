@@ -198,7 +198,7 @@ local _99_state
 --- @field clear_previous_requests fun(): nil
 --- clears all previous search and visual operations
 --- @field Extensions _99.Extensions
---- clears all previous search and visual operations
+--- check out Worker for cool abstraction on search and vibe
 local _99 = {
   DEBUG = Level.DEBUG,
   INFO = Level.INFO,
