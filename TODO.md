@@ -1,3 +1,4 @@
+* make _99_state persistent that way i dont lose my shit.
 * Prompt should generate its prompt via prompt() instead of passing it into the provider as a string...
 * Search Items should be editable.  That way i can mark them off as finished
   * use capture input style to "mark" them as done.  [x] as done, or delete line
