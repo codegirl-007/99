@@ -1,9 +1,10 @@
-<<<<<<< Updated upstream
+* if there is an active window, that is not a status window, open, then results should not be opened until that is closed.
+ * we need effetively an action queue along with window lifecycle functions
+* i need a way to pring up past vibe sessions that were failed or cancelled so i can use that text again.
+ * i think something like, if last version of this command executed was a failure / cancel, just auto fill previous text
 * make _99_state persistent that way i dont lose my shit.
-=======
 * when prompting or searching and a result comes in, the popup became broken with
   quickfix results... Not sure what the issue is if its a me issue or something else
->>>>>>> Stashed changes
 * Prompt should generate its prompt via prompt() instead of passing it into the provider as a string...
 * Search Items should be editable.  That way i can mark them off as finished
   * use capture input style to "mark" them as done.  [x] as done, or delete line
