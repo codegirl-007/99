@@ -5,6 +5,28 @@ local Range = geo.Range
 local test_utils = require("99.test.test_utils")
 local eq = assert.are.same
 
+describe("Point", function()
+  local buffer
+
+  before_each(function()
+    buffer = test_utils.create_file({
+      "first line",
+      "middle line",
+      "last line",
+    }, "lua", 1, 0)
+  end)
+
+  after_each(function()
+    test_utils.clean_files()
+  end)
+
+  it("line returns first, middle, and last line", function()
+    eq("first line", Point:from_1_based(1, 1):line(buffer))
+    eq("middle line", Point:from_1_based(2, 1):line(buffer))
+    eq("last line", Point:from_1_based(3, 1):line(buffer))
+  end)
+end)
+
 describe("Range", function()
   local buffer
 

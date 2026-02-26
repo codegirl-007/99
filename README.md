@@ -143,7 +143,8 @@ See search for more details
 | --- | --- | --- |
 | `setup` | `fun(opts?: _99.Options): nil` | - |
 | `search` | `fun(opts: _99.ops.SearchOpts): _99.TraceID` | - |
-| `vibe_search` | `fun(opts?: _99.ops.Opts): _99.TraceID \| nil` | - |
+| `vibe` | `fun(opts?: _99.ops.Opts): _99.TraceID \| nil` | - |
+| `open` | `fun(): nil` | - |
 | `visual` | `fun(opts: _99.ops.Opts): _99.TraceID` | - |
 | `view_logs` | `fun(): nil` | - |
 | `stop_all_requests` | `fun(): nil` | - |
@@ -161,8 +162,14 @@ way you want it to.
 Performs a search across your project with the prompt you provide and return out a list of
 locations with notes that will be put into your quick fix list.
 
-#### vibe_search
-Select a previous search, edit it, then pass it to vibe.
+#### vibe
+No description.
+
+#### open
+Opens a selection window for you to select the last interaction to open
+and display its contents in a way that makes sense for its type.  For
+search and vibe, it will open the qfix window.  For tutorial, it will open
+the tutorial window.
 
 #### visual
 takes your current selection and sends that along with the prompt provided and replaces

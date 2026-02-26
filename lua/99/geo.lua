@@ -204,6 +204,14 @@ function Point.from_mark(mark)
   }, Point)
 end
 
+--- Returns the line in the editor that this point is on
+--- @param buffer number
+function Point:line(buffer)
+  local row, _ = self:to_vim()
+  local lines = vim.api.nvim_buf_get_lines(buffer, row, row + 1, false)
+  return lines[1]
+end
+
 function Point.zero()
   return Point.from_0_based(0, 0)
 end

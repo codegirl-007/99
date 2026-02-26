@@ -174,10 +174,7 @@ local prompt_settings = {
   --- @param tmp_file string
   --- @return string
   tmp_file_location = function(tmp_file)
-    return string.format(
-      "<TEMP_FILE>%s</TEMP_FILE>",
-      tmp_file
-    )
+    return string.format("<TEMP_FILE>%s</TEMP_FILE>", tmp_file)
   end,
 
   --- @return string

@@ -1,3 +1,6 @@
+--- TODO: I would like to clean up this file.  I will probably need to create a
+--- task for me to do in the future to make this a bit more clean and only have
+--- stuff that makes sense for the api to be in here... but for now.. ia m sorry
 local Logger = require("99.logger.logger")
 local Level = require("99.logger.level")
 local ops = require("99.ops")
@@ -186,9 +189,12 @@ local _99_state
 --- @field search fun(opts: _99.ops.SearchOpts): _99.TraceID
 --- Performs a search across your project with the prompt you provide and return out a list of
 --- locations with notes that will be put into your quick fix list.
---- @field vibe_search fun(opts?: _99.ops.Opts): _99.TraceID | nil
---- Select a previous search, edit it, then pass it to vibe.
 --- @field vibe fun(opts?: _99.ops.Opts): _99.TraceID | nil
+--- @field open fun(): nil
+--- Opens a selection window for you to select the last interaction to open
+--- and display its contents in a way that makes sense for its type.  For
+--- search and vibe, it will open the qfix window.  For tutorial, it will open
+--- the tutorial window.
 --- @field visual fun(opts: _99.ops.Opts): _99.TraceID
 --- takes your current selection and sends that along with the prompt provided and replaces
 --- your visual selection with the results
@@ -265,56 +271,59 @@ function _99.info()
   Window.display_centered_message(info)
 end
 
---- @param tutorials _99.Prompt.Data.Tutorial[]
---- @return string[]
-local function tutorial_to_string(tutorials)
-  local out = {}
-  for _, t in ipairs(tutorials) do
-    table.insert(out, string.format("%d: %s", t.xid, t.tutorial[1]))
-  end
-  return out
-end
+--     elseif #tutorials == 1 then
+--       local data = tutorials[1]
+--       assert(data, "tutorial is malformed")
+--       Window.create_split(data.tutorial, data.buffer, opts)
+--       return
 
---- @param xid number | nil
---- @param opts? _99.window.SplitWindowOpts
-function _99.open_tutorial(xid, opts)
-  opts = opts or { split_direction = "vertical" }
-  if xid == nil then
-    --- @type _99.Prompt.Data.Tutorial[]
-    local tutorials = _99_state:request_by_type("tutorial")
-    if #tutorials == 0 then
-      print("no tutorials available")
-      return
-    elseif #tutorials == 1 then
-      local data = tutorials[1]
-      assert(data, "tutorial is malformed")
-      Window.create_split(data.tutorial, data.buffer, opts)
-      return
-    else
-      --- TODO: Complete this task when i work through tutorials
-      error([[not implemented.  right now tutorials are not sccrollable.
-This is a later change required.  I want a next/prev tutorial navigation
-much like qfix list.  then i to have a capture input style window where you
-can press enter
-]])
-    end
-    return
-  end
-
-  --- @type _99.Prompt | nil
-  local context = _99_state.__request_by_id[xid]
-  assert(context, "could not find request")
-  assert(context.state == "success", "tutorial found had a non success state")
-
+--- @param context _99.Prompt
+function _99.open_tutorial(context)
   local tutorial = context:tutorial_data()
-  Window.create_split(tutorial.tutorial, tutorial.buffer, opts)
+  Window.create_split(tutorial.tutorial, tutorial.buffer)
 end
 
---- @param path string
-function _99:rule_from_path(path)
-  _ = self
-  path = expand(path) --[[ @as string]]
-  return Agents.get_rule_by_path(_99_state.rules, path)
+function _99.open()
+  local requests = _99_state:requests()
+  local str_requests = {}
+  for _, r in ipairs(requests) do
+    table.insert(str_requests, r:summary())
+  end
+  for i = 1, #requests do
+    str_requests[i] = string.format("%d: %s", i, requests[i]:summary())
+  end
+  Window.capture_select_input("99", {
+    content = str_requests,
+    cb = function(success, result)
+      if not success or result == "" then
+        return
+      end
+
+      local idx = tonumber(vim.fn.matchstr(result, "^\\d\\+"))
+      local r = requests[idx]
+      if not r then
+        print(
+          "somehow we have had a successful callback, but no request context... i honestly have no idea how we got here"
+        )
+        return
+      end
+      assert(
+        r:valid(),
+        "request is not valid... not sure how we got here.  please report bug and this word: "
+          .. vim.inspect(r.operation)
+      )
+      if r.operation == "visual" then
+        --- TODO: this is its own work item for being able to have a global mark
+        --- section in which i keep track of marks for the lifetime of the
+        --- editor and when you close the editor, then it should lose them
+        print("visual not supported: i will figure this out... at some point")
+      elseif r.operation == "search" or r.operation == "vibe" then
+        _99.open_qfix_for_request(r)
+      elseif r.operation == "tutorial" then
+        _99.open_tutorial(r)
+      end
+    end,
+  })
 end
 
 --- @param opts? _99.ops.Opts
@@ -345,55 +354,12 @@ function _99.search(opts)
   return context.xid
 end
 
---- @param opts? _99.ops.Opts
---- @return _99.TraceID | nil
-function _99.vibe_search(opts)
-  local searches = _99_state:request_by_type("search")
-  if #searches == 0 then
-    error("no previous search results")
-    return nil
-  end
-
-  local o = process_opts(opts)
-  local lines = {}
-  for i, context in ipairs(searches) do
-    table.insert(lines, string.format("%d: %s", i, context:summary()))
-  end
-
-  Window.capture_select_input("Select Search", {
-    content = lines,
-    cb = function(ok, result)
-      if not ok then
-        return
-      end
-
-      local idx = tonumber(string.match(result, "^(%d+)%:"))
-      local selected = idx and searches[idx] or nil
-      if not selected then
-        print("failed to select search result")
-        return
-      end
-
-      local selected_data = selected:search_data()
-      local context = Prompt.vibe(_99_state)
-      capture_prompt(
-        ops.vibe,
-        "Vibe",
-        context,
-        o,
-        vim.split(selected_data.response, "\n")
-      )
-    end,
-  })
-
-  return nil
-end
-
 --- @param opts _99.ops.Opts
 function _99.tutorial(opts)
   opts = process_opts(opts)
   local context = Prompt.tutorial(_99_state)
   if opts.additional_prompt then
+    context.user_prompt = opts.additional_prompt
     ops.tutorial(context, opts)
   else
     capture_prompt(ops.tutorial, "Tutorial", context, opts)
@@ -446,57 +412,8 @@ function _99.next_request_logs()
   Window.display_full_screen_message(logs[_99_state.__view_log_idx])
 end
 
---- @class _99.QFixEntry
---- @field filename string
---- @field lnum number
---- @field col number
---- @field text string
-
---- @class _99.QFixOpts
---- @field operation? "search" | "vibe"
-
---- @param opts? _99.QFixOpts
---- @return "search" | "vibe"
-local function qfix_operation(opts)
-  local operation = (opts and opts.operation) or "search"
-  assert(
-    operation == "search" or operation == "vibe",
-    "opts.operation must be either 'search' or 'vibe'"
-  )
-  return operation
-end
-
---- @param operation "search" | "vibe"
---- @return _99.Prompt[]
-local function qfix_requests(operation)
-  local out = {} --[[ @as _99.Prompt[] ]]
-  for _, request in ipairs(_99_state.__request_history) do
-    if request.operation == operation then
-      local ok, items = pcall(request.qfix_data, request)
-      if ok and #items > 0 then
-        table.insert(out, request)
-      end
-    end
-  end
-  return out
-end
-
---- @param operation "search" | "vibe"
---- @param index number
---- @return _99.Prompt | nil
-local function qfix_request_at(operation, index)
-  local requests = qfix_requests(operation)
-  if #requests == 0 then
-    return nil
-  end
-
-  local idx = math.max(1, math.min(index, #requests))
-  _99_state.__qfix_history_idx[operation] = idx
-  return requests[idx]
-end
-
 --- @param request _99.Prompt
-local function open_qfix_request(request)
+function _99.open_qfix_for_request(request)
   local items = request:qfix_data()
   if #items == 0 then
     print("there are no quickfix items to show")
@@ -520,58 +437,6 @@ function _99.clear_all_marks()
     mark:delete()
   end
   _99_state.__active_marks = {}
-end
-
---- @param opts? _99.QFixOpts
-function _99.qfix_top(opts)
-  local operation = qfix_operation(opts)
-  local requests = qfix_requests(operation)
-  if #requests == 0 then
-    print("there are no quickfix items to show")
-    return
-  end
-
-  local request = qfix_request_at(operation, #requests)
-  assert(request, "failed to retrieve qfix request")
-  open_qfix_request(request)
-end
-
---- @param opts? _99.QFixOpts
-function _99.qfix_older(opts)
-  local operation = qfix_operation(opts)
-  local requests = qfix_requests(operation)
-  if #requests == 0 then
-    print("there are no quickfix items to show")
-    return
-  end
-
-  local current = _99_state.__qfix_history_idx[operation]
-  if current == 0 then
-    current = #requests
-  end
-
-  local request = qfix_request_at(operation, current - 1)
-  assert(request, "failed to retrieve older qfix request")
-  open_qfix_request(request)
-end
-
---- @param opts? _99.QFixOpts
-function _99.qfix_newer(opts)
-  local operation = qfix_operation(opts)
-  local requests = qfix_requests(operation)
-  if #requests == 0 then
-    print("there are no quickfix items to show")
-    return
-  end
-
-  local current = _99_state.__qfix_history_idx[operation]
-  if current == 0 then
-    current = #requests
-  end
-
-  local request = qfix_request_at(operation, current + 1)
-  assert(request, "failed to retrieve newer qfix request")
-  open_qfix_request(request)
 end
 
 function _99.clear_previous_requests()

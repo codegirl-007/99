@@ -54,8 +54,7 @@ local function tutorial(context, opts)
         response or "no response provided"
       )
     elseif status == "success" then
-      local data = open_tutorial(context, response)
-      context._99:open_tutorial(data)
+      open_tutorial(context, response)
     end
   end))
 end

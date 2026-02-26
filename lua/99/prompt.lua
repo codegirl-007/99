@@ -158,7 +158,8 @@ end
 
 --- @return string
 function Prompt:summary()
-  return string.format("%s: %s", self.operation, self.user_prompt)
+  local prompt_str = utils.split_with_count(self.user_prompt, 8)
+  return string.format("%s: %s", self.operation, table.concat(prompt_str, " "))
 end
 
 --- @param _99 _99.State
