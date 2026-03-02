@@ -665,8 +665,9 @@ function M.close(win)
 end
 
 --- @class _99.window.SplitWindowOpts
---- @field split_direction "vertical" | "horizontal" | nil
---- @field filetype string
+--- @field split_direction "vertical" | "horizontal"
+--- @field window_opts table<string, any>
+--- @field filetype string | nil
 
 --- @param content string[]
 ---@param buffer number | nil
@@ -674,7 +675,7 @@ end
 --- @return _99.window.SplitWindow
 function M.create_split(content, buffer, opts)
   opts = opts or { split_direction = "vertical" }
-
+  opts.window_opts = opts.window_opts or {}
   opts.split_direction = opts.split_direction or "vertical"
   opts.filetype = opts.filetype or "markdown"
 
@@ -707,7 +708,9 @@ function M.create_split(content, buffer, opts)
 
   vim.api.nvim_win_set_buf(win_id, buf_id)
   vim.bo[buf_id].filetype = opts.filetype
-
+  for option, value in pairs(opts.window_opts) do
+    vim.wo[win_id][option] = value
+  end
   return {
     win = win_id,
     buffer = buf_id,

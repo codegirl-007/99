@@ -191,6 +191,8 @@ local _99_state
 --- Performs a search across your project with the prompt you provide and return out a list of
 --- locations with notes that will be put into your quick fix list.
 --- @field vibe fun(opts?: _99.ops.Opts): _99.TraceID | nil
+--- will ask opencode or whatever provider currently being used to perform a vibe
+--- session.
 --- @field open fun(): nil
 --- Opens a selection window for you to select the last interaction to open
 --- and display its contents in a way that makes sense for its type.  For
@@ -281,7 +283,12 @@ end
 --- @param context _99.Prompt
 function _99.open_tutorial(context)
   local tutorial = context:tutorial_data()
-  Window.create_split(tutorial.tutorial, tutorial.buffer)
+  Window.create_split(tutorial.tutorial, tutorial.buffer, {
+    split_direction = "vertical",
+    window_opts = {
+      wrap = true,
+    },
+  })
 end
 
 function _99.open()
